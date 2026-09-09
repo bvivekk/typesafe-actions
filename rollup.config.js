@@ -56,6 +56,10 @@ function createConfig(
       },
       name: opts.name,
       sourcemap: true,
+      globals: {
+        rxjs: 'rxjs',
+        'rxjs/operators': 'rxjs.operators',
+      },
       // exports: 'named',
     },
     plugins: [
