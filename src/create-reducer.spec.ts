@@ -270,15 +270,20 @@ const initialState = 0;
   type RequestAction = ActionType<typeof requestActions>;
 
   const emptyLoadingReducer = createReducer<boolean, RequestAction>(false);
+  const loadingReducerWithStart = emptyLoadingReducer.handleAction(
+    requestStart,
+    () => true
+  );
 
-  const loadingReducer = emptyLoadingReducer
-    .handleAction(requestStart, () => true)
-    .defaultHandler((_state, action) => {
-      // @dts-jest:pass:snap
-      action;
+  type RemainingRequestHandler = Parameters<
+    typeof loadingReducerWithStart.defaultHandler
+  >[0];
+  type RemainingRequestAction = Parameters<RemainingRequestHandler>[1];
+  const remainingRequestAction = {} as RemainingRequestAction;
+  // @dts-jest:pass:snap
+  remainingRequestAction;
 
-      return false;
-    });
+  const loadingReducer = loadingReducerWithStart.defaultHandler(() => false);
 
   // @dts-jest:pass:snap
   loadingReducer.handlers;
@@ -296,12 +301,7 @@ const initialState = 0;
 
   const loadingReducerByType = emptyLoadingReducer
     .handleType('REQUEST_START', () => true)
-    .defaultHandler((_state, action) => {
-      // @dts-jest:pass:snap
-      action;
-
-      return false;
-    });
+    .defaultHandler(() => false);
 
   // @dts-jest:pass:snap
   loadingReducerByType.handlers;
@@ -310,14 +310,18 @@ const initialState = 0;
   // @dts-jest:pass
   loadingReducerByType(true, requestSuccess()); // => false
 
-  const fallbackOnlyReducer = createReducer<number, RequestAction>(
-    0
-  ).defaultHandler((state, action) => {
-    // @dts-jest:pass:snap
-    action;
+  const fallbackOnlyChain = createReducer<number, RequestAction>(0);
+  type FallbackOnlyHandler = Parameters<
+    typeof fallbackOnlyChain.defaultHandler
+  >[0];
+  type FallbackOnlyAction = Parameters<FallbackOnlyHandler>[1];
+  const fallbackOnlyAction = {} as FallbackOnlyAction;
+  // @dts-jest:pass:snap
+  fallbackOnlyAction;
 
-    return state + 1;
-  });
+  const fallbackOnlyReducer = fallbackOnlyChain.defaultHandler(
+    state => state + 1
+  );
 
   // @dts-jest:pass
   Object.keys({ ...fallbackOnlyReducer.handlers }); // => []
@@ -338,20 +342,25 @@ const initialState = 0;
     sessionInitialState
   ).handleAction(setToken, (_state, action) => ({ token: action.payload }));
 
-  const rootSessionReducer = createReducer<SessionState, SessionAction>(
+  const rootSessionWithSignOut = createReducer<SessionState, SessionAction>(
     sessionInitialState
-  )
-    .handleAction(signOut, (_state, action) =>
-      sessionReducer(undefined, action)
-    )
-    .defaultHandler((state, action) => {
-      // @dts-jest:pass:snap
-      action;
-      // @dts-jest:pass
-      action.payload;
+  ).handleAction(signOut, (_state, action) =>
+    sessionReducer(undefined, action)
+  );
 
-      return sessionReducer(state, action);
-    });
+  type RemainingSessionHandler = Parameters<
+    typeof rootSessionWithSignOut.defaultHandler
+  >[0];
+  type RemainingSessionAction = Parameters<RemainingSessionHandler>[1];
+  const remainingSessionAction = {} as RemainingSessionAction;
+  // @dts-jest:pass:snap
+  remainingSessionAction;
+  // @dts-jest:pass
+  remainingSessionAction.payload;
+
+  const rootSessionReducer = rootSessionWithSignOut.defaultHandler(
+    (state, action) => sessionReducer(state, action)
+  );
 
   // @dts-jest:pass:snap
   rootSessionReducer.handlers;
