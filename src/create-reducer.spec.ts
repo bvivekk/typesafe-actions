@@ -256,3 +256,107 @@ const initialState = 0;
     });
   }
 }
+
+// @dts-jest:group Default handler
+{
+  const requestStart = createAction('REQUEST_START')();
+  const requestSuccess = createAction('REQUEST_SUCCESS')();
+  const requestFailure = createAction('REQUEST_FAILURE')();
+  const requestActions = {
+    requestStart,
+    requestSuccess,
+    requestFailure,
+  };
+  type RequestAction = ActionType<typeof requestActions>;
+
+  const emptyLoadingReducer = createReducer<boolean, RequestAction>(false);
+
+  const loadingReducer = emptyLoadingReducer
+    .handleAction(requestStart, () => true)
+    .defaultHandler((_state, action) => {
+      // @dts-jest:pass:snap
+      action;
+
+      return false;
+    });
+
+  // @dts-jest:pass:snap
+  loadingReducer.handlers;
+  // @dts-jest:pass
+  Object.keys({ ...loadingReducer.handlers }); // => ["REQUEST_START"]
+  // @dts-jest:pass
+  Object.keys({ ...emptyLoadingReducer.handlers }); // => []
+
+  // @dts-jest:pass
+  loadingReducer(false, requestStart()); // => true
+  // @dts-jest:pass
+  loadingReducer(true, requestSuccess()); // => false
+  // @dts-jest:pass
+  loadingReducer(true, requestFailure()); // => false
+
+  const loadingReducerByType = emptyLoadingReducer
+    .handleType('REQUEST_START', () => true)
+    .defaultHandler((_state, action) => {
+      // @dts-jest:pass:snap
+      action;
+
+      return false;
+    });
+
+  // @dts-jest:pass:snap
+  loadingReducerByType.handlers;
+  // @dts-jest:pass
+  loadingReducerByType(false, requestStart()); // => true
+  // @dts-jest:pass
+  loadingReducerByType(true, requestSuccess()); // => false
+
+  const fallbackOnlyReducer = createReducer<number, RequestAction>(
+    0
+  ).defaultHandler((state, action) => {
+    // @dts-jest:pass:snap
+    action;
+
+    return state + 1;
+  });
+
+  // @dts-jest:pass
+  Object.keys({ ...fallbackOnlyReducer.handlers }); // => []
+  // @dts-jest:pass
+  fallbackOnlyReducer(0, requestStart()); // => 1
+
+  type SessionState = { token: string | null };
+  const signOut = createAction('SIGN_OUT')();
+  const setToken = createAction('SET_TOKEN')<string>();
+  const sessionActions = {
+    signOut,
+    setToken,
+  };
+  type SessionAction = ActionType<typeof sessionActions>;
+  const sessionInitialState: SessionState = { token: null };
+
+  const sessionReducer = createReducer<SessionState, SessionAction>(
+    sessionInitialState
+  ).handleAction(setToken, (_state, action) => ({ token: action.payload }));
+
+  const rootSessionReducer = createReducer<SessionState, SessionAction>(
+    sessionInitialState
+  )
+    .handleAction(signOut, (_state, action) =>
+      sessionReducer(undefined, action)
+    )
+    .defaultHandler((state, action) => {
+      // @dts-jest:pass:snap
+      action;
+      // @dts-jest:pass
+      action.payload;
+
+      return sessionReducer(state, action);
+    });
+
+  // @dts-jest:pass:snap
+  rootSessionReducer.handlers;
+  // @dts-jest:pass
+  rootSessionReducer({ token: 'abc' }, signOut()); // => { token: null }
+  // @dts-jest:pass
+  rootSessionReducer({ token: null }, setToken('xyz')); // => { token: "xyz" }
+}
