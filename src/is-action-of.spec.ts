@@ -41,6 +41,54 @@ const $action = [
   mappedPayloadMetaAction,
 ];
 
+const asyncRequestAction = asyncAction.request();
+const asyncRequestExpected = { type: 'FETCH_USER_REQUEST' };
+const asyncSuccessPayload = {
+  firstName: 'Ada',
+  lastName: 'Lovelace',
+};
+const asyncSuccessAction = asyncAction.success(asyncSuccessPayload);
+const asyncSuccessExpected = {
+  type: 'FETCH_USER_SUCCESS',
+  payload: asyncSuccessPayload,
+};
+const asyncFailurePayload = new Error('Unable to fetch user');
+const asyncFailureAction = asyncAction.failure(asyncFailurePayload);
+const asyncFailureExpected = {
+  type: 'FETCH_USER_FAILURE',
+  payload: asyncFailurePayload,
+};
+
+const asyncActionWithCancel = createAsyncAction(
+  'FETCH_TODOS_REQUEST',
+  'FETCH_TODOS_SUCCESS',
+  'FETCH_TODOS_FAILURE',
+  'FETCH_TODOS_CANCEL'
+)<undefined, string[], Error, string>();
+
+const asyncCancelRequestAction = asyncActionWithCancel.request();
+const asyncCancelSuccessAction = asyncActionWithCancel.success(['a']);
+const asyncCancelFailureAction = asyncActionWithCancel.failure(
+  new Error('boom')
+);
+const asyncCancelAction = asyncActionWithCancel.cancel('reason');
+
+const anotherAsyncAction = createAsyncAction(
+  'LOAD_ITEM_REQUEST',
+  'LOAD_ITEM_SUCCESS',
+  'LOAD_ITEM_FAILURE'
+)<undefined, number, Error>();
+
+const anotherAsyncSuccessAction = anotherAsyncAction.success(42);
+
+const $asyncAndRegularActions = [
+  typeOnlyAction,
+  payloadAction,
+  asyncRequestAction,
+  asyncSuccessAction,
+  asyncFailureAction,
+];
+
 /** TESTS */
 
 // @dts-jest:group should work with single action-creator arg
@@ -139,56 +187,6 @@ const $action = [
     action; // => {"payload": 1234, "type": "WITH_PAYLOAD"}
   }
 }
-
-/** ASYNC ACTION HELPERS */
-
-const asyncRequestAction = asyncAction.request();
-const asyncRequestExpected = { type: 'FETCH_USER_REQUEST' };
-const asyncSuccessPayload = {
-  firstName: 'Ada',
-  lastName: 'Lovelace',
-};
-const asyncSuccessAction = asyncAction.success(asyncSuccessPayload);
-const asyncSuccessExpected = {
-  type: 'FETCH_USER_SUCCESS',
-  payload: asyncSuccessPayload,
-};
-const asyncFailurePayload = new Error('Unable to fetch user');
-const asyncFailureAction = asyncAction.failure(asyncFailurePayload);
-const asyncFailureExpected = {
-  type: 'FETCH_USER_FAILURE',
-  payload: asyncFailurePayload,
-};
-
-const asyncActionWithCancel = createAsyncAction(
-  'FETCH_TODOS_REQUEST',
-  'FETCH_TODOS_SUCCESS',
-  'FETCH_TODOS_FAILURE',
-  'FETCH_TODOS_CANCEL'
-)<undefined, string[], Error, string>();
-
-const asyncCancelRequestAction = asyncActionWithCancel.request();
-const asyncCancelSuccessAction = asyncActionWithCancel.success(['a']);
-const asyncCancelFailureAction = asyncActionWithCancel.failure(
-  new Error('boom')
-);
-const asyncCancelAction = asyncActionWithCancel.cancel('reason');
-
-const anotherAsyncAction = createAsyncAction(
-  'LOAD_ITEM_REQUEST',
-  'LOAD_ITEM_SUCCESS',
-  'LOAD_ITEM_FAILURE'
-)<undefined, number, Error>();
-
-const anotherAsyncSuccessAction = anotherAsyncAction.success(42);
-
-const $asyncAndRegularActions = [
-  typeOnlyAction,
-  payloadAction,
-  asyncRequestAction,
-  asyncSuccessAction,
-  asyncFailureAction,
-];
 
 // @dts-jest:group should work with a single async-action object
 {
@@ -289,6 +287,20 @@ const $asyncAndRegularActions = [
   if (isActionOf(asyncAction)(action)) {
     // @dts-jest:pass:snap
     action; // => {"payload": {"firstName": "Ada", "lastName": "Lovelace"}, "type": "FETCH_USER_SUCCESS"}
+  }
+}
+
+// @dts-jest:group should correctly assert type for async-action objects with cancel
+{
+  const action: any = asyncCancelAction;
+
+  if (isActionOf(asyncActionWithCancel, action)) {
+    // @dts-jest:pass:snap
+    action; // => {"payload": "reason", "type": "FETCH_TODOS_CANCEL"}
+  }
+  if (isActionOf(asyncActionWithCancel)(action)) {
+    // @dts-jest:pass:snap
+    action; // => {"payload": "reason", "type": "FETCH_TODOS_CANCEL"}
   }
 }
 
