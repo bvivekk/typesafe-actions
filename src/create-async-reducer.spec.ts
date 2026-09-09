@@ -47,10 +47,7 @@ const reset = createAction('RESET_USER')();
 {
   const reducer = createAsyncReducer(initialState, fetchUserAsync, {
     request: (state, action) => {
-      // @dts-jest:pass:snap
       testType<TH.EmptyAction<'FETCH_USER_REQUEST'>>(action);
-      // @dts-jest:fail:snap
-      action.payload;
       return {
         ...state,
         loading: true,
@@ -58,7 +55,6 @@ const reset = createAction('RESET_USER')();
       };
     },
     success: (state, action) => {
-      // @dts-jest:pass:snap
       testType<TH.PayloadAction<'FETCH_USER_SUCCESS', User>>(action);
       return {
         loading: false,
@@ -67,7 +63,6 @@ const reset = createAction('RESET_USER')();
       };
     },
     failure: (state, action) => {
-      // @dts-jest:pass:snap
       testType<TH.PayloadAction<'FETCH_USER_FAILURE', Error>>(action);
       return {
         ...state,
@@ -76,7 +71,6 @@ const reset = createAction('RESET_USER')();
       };
     },
     cancel: (state, action) => {
-      // @dts-jest:pass:snap
       testType<TH.PayloadAction<'FETCH_USER_CANCEL', string>>(action);
       return {
         ...state,
@@ -115,7 +109,7 @@ const reset = createAction('RESET_USER')();
   ); /* => {
     loading: false,
     data: null,
-    error: {},
+    error: Error('reason'),
   } */
 
   // @dts-jest:pass:snap
@@ -334,7 +328,7 @@ const reset = createAction('RESET_USER')();
   const errorReducer = createErrorReducer(fetchUserAsync);
 
   // @dts-jest:pass:snap
-  errorReducer(undefined, fetchUserAsync.failure(Error('reason'))); // => {}
+  errorReducer(undefined, fetchUserAsync.failure(Error('reason'))); // => Error('reason')
 
   // @dts-jest:pass:snap
   errorReducer(
@@ -349,7 +343,7 @@ const reset = createAction('RESET_USER')();
   errorReducer(Error('stale'), fetchUserAsync.request()); // => null
 
   // @dts-jest:pass
-  errorReducer(Error('stale'), { type: 'UNKNOWN' }); // => {}
+  errorReducer(Error('stale'), { type: 'UNKNOWN' }); // => Error('stale')
 
   const customError = createErrorReducer(fetchUserWithoutCancel, null);
   // @dts-jest:pass
@@ -378,4 +372,11 @@ const reset = createAction('RESET_USER')();
   });
   // @dts-jest:pass:snap
   testType<SuccessAction>(successAction);
+}
+
+// @dts-jest:group request action has no payload
+{
+  const action = fetchUserAsync.request();
+  // @dts-jest:fail:snap
+  action.payload;
 }

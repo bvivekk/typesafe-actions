@@ -1,6 +1,6 @@
 import { createReducer } from './create-reducer';
 import { getType } from './get-type';
-import { Action, ActionCreator, Reducer } from './type-helpers';
+import { Action, ActionCreator } from './type-helpers';
 
 export type AsyncActionCreatorMap<
   TRequestAction extends Action = Action,
@@ -130,10 +130,7 @@ export function createAsyncReducer<
  */
 export function createLoadingReducer<
   TAsyncAction extends AsyncActionCreatorMap
->(
-  asyncAction: TAsyncAction,
-  initialState: boolean = false
-): Reducer<boolean, AsyncActionType<TAsyncAction>> {
+>(asyncAction: TAsyncAction, initialState: boolean = false) {
   return createAsyncReducer<boolean, TAsyncAction>(initialState, asyncAction, {
     request: (): boolean => true,
     success: (): boolean => false,
@@ -150,10 +147,7 @@ export function createLoadingReducer<
 export function createErrorReducer<TAsyncAction extends AsyncActionCreatorMap>(
   asyncAction: TAsyncAction,
   initialState: AsyncFailurePayload<TAsyncAction> | null = null
-): Reducer<
-  AsyncFailurePayload<TAsyncAction> | null,
-  AsyncActionType<TAsyncAction>
-> {
+) {
   return createAsyncReducer<
     AsyncFailurePayload<TAsyncAction> | null,
     TAsyncAction
