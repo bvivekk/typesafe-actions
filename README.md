@@ -171,7 +171,7 @@ Both paths produce the same Flux Standard Actions at runtime and the same discri
 The examples below share this small domain model:
 
 ```ts
-// types.ts
+// features/todos/types.ts
 export type Todo = {
   id: string;
   title: string;
@@ -188,6 +188,25 @@ export const initialState: TodosState = {
   todos: [],
   isLoading: false,
 };
+
+export const nextId = (): string => Math.random().toString(36).slice(2);
+```
+
+Async examples call a tiny API. The default export is what `Services` refers to in the store augmentation below:
+
+```ts
+// store/services.ts
+import { Todo } from '../features/todos/types';
+
+const services = {
+  todosApi: {
+    getAll(_filter: string): Promise<Todo[]> {
+      return Promise.resolve([]);
+    },
+  },
+};
+
+export default services;
 ```
 
 [⇧ back to top](#table-of-contents)
@@ -206,9 +225,9 @@ There are two equivalent forms:
 2. **Payload / meta creators** — you keep named arguments `(title, id, …)` and map them to `payload` / `meta`.
 
 ```ts
-// actions.ts
+// features/todos/actions.ts
 import { createAction } from 'typesafe-actions';
-import { Todo } from './types';
+import { nextId, Todo } from './types';
 
 // empty action (no payload)
 export const clearTodos = createAction('todos/CLEAR')();
@@ -224,10 +243,14 @@ export const notify = createAction('todos/NOTIFY')<string, { scope: string }>();
 //   type: "todos/NOTIFY"; payload: string; meta: { scope: string }
 // }
 
+// meta only — pass `undefined` as the payload type argument
+export const log = createAction('todos/LOG')<undefined, string>();
+log(undefined, 'saved');
+
 // payload creator — named args, mapped payload
 export const add = createAction(
   'todos/ADD',
-  (title: string) => ({ id: cuid(), title, completed: false })
+  (title: string) => ({ id: nextId(), title, completed: false })
 )<Todo>();
 // add: (title: string) => { type: "todos/ADD"; payload: Todo }
 
@@ -235,7 +258,7 @@ add('Write docs');
 // { type: "todos/ADD", payload: { id: string, title: "Write docs", completed: false } }
 ```
 
-> **TIP:** Use `undefined` as the payload generic when you need `meta` but no payload: `createAction('LOG')<undefined, string>()`.
+> **TIP:** `log` is the meta-only form. Pass `undefined` as the payload type argument when the creator should take `meta` and no payload.
 
 > **WARNING:**  
 > The `action` factory creates **action objects**, not enhanced action-creators. It will **NOT WORK** with `getType` or `isActionOf`. Prefer `createAction`.
@@ -243,12 +266,14 @@ add('Write docs');
 For non-standard action shapes, use [`createCustomAction`](#createcustomaction) (the v5 signature takes a handler, not a `type => …` callback):
 
 ```ts
+// features/todos/legacy-actions.ts
 import { createCustomAction } from 'typesafe-actions';
+import { nextId } from './types';
 
 export const addLegacy = createCustomAction(
   'todos/ADD_LEGACY',
   (title: string) => ({
-    id: cuid(),
+    id: nextId(),
     title,
     completed: false,
   })
@@ -261,9 +286,8 @@ export const addLegacy = createCustomAction(
 `createAsyncAction` groups `request` / `success` / `failure` (and optional `cancel`) creators:
 
 ```ts
-// actions.ts (continued)
+// features/todos/actions.ts (continued)
 import { createAsyncAction } from 'typesafe-actions';
-import { Todo } from './types';
 
 export const fetchTodosAsync = createAsyncAction(
   'todos/FETCH_REQUEST',
@@ -285,17 +309,21 @@ fetchTodosAsync.cancel('all');
 // { type: "todos/FETCH_CANCEL", payload: "all" }
 ```
 
-Use `[Payload, Meta]` tuples when an async step also needs `meta`:
+Use a `[payload, meta]` tuple when an async step also needs `meta`. Give that creator its own type strings so it does not collide with `fetchTodosAsync` inside one union:
 
 ```ts
+// features/todos/actions-meta.ts
+import { createAsyncAction } from 'typesafe-actions';
+import { Todo } from './types';
+
 export const fetchTodosWithMetaAsync = createAsyncAction(
-  'todos/FETCH_REQUEST',
-  'todos/FETCH_SUCCESS',
-  'todos/FETCH_FAILURE'
+  'todos/FETCH_META_REQUEST',
+  'todos/FETCH_META_SUCCESS',
+  'todos/FETCH_META_FAILURE'
 )<[string, { startedAt: number }], Todo[], Error>();
 
 fetchTodosWithMetaAsync.request('all', { startedAt: Date.now() });
-// { type: "todos/FETCH_REQUEST", payload: "all", meta: { startedAt: number } }
+// { type: "todos/FETCH_META_REQUEST", payload: "all", meta: { startedAt: number } }
 ```
 
 #### RootAction
@@ -315,6 +343,20 @@ const actions = {
 
 export default actions;
 export type TodosAction = ActionType<typeof todos>;
+```
+
+`root-reducer.ts` is the reducer `StateType` reads. It imports the feature reducer from the next section:
+
+```ts
+// store/root-reducer.ts
+import { combineReducers } from 'redux';
+import { todosReducer } from '../features/todos/reducer';
+
+const rootReducer = combineReducers({
+  todos: todosReducer,
+});
+
+export default rootReducer;
 ```
 
 ```ts
@@ -340,7 +382,7 @@ declare module 'typesafe-actions' {
 Use `handleAction` when the action creator is the source of truth:
 
 ```ts
-// reducer.ts
+// features/todos/reducer.ts
 import { createReducer } from 'typesafe-actions';
 
 import { initialState } from './types';
@@ -384,23 +426,33 @@ createReducer(initialState).handleAction(
 );
 ```
 
-Object-map style uses `getType` as the key:
+Object-map style uses `getType` as the key. TypeScript does not contextually type a handler that sits under a computed key, so annotate that handler:
 
 ```ts
+// features/todos/reducer-map.ts
 import { createReducer, getType } from 'typesafe-actions';
+import { TodosState, initialState } from './types';
+import { add, clearTodos } from './actions';
 
-const todosReducer = createReducer(initialState, {
-  [getType(add)]: (state, action) => ({
+export const todosReducer = createReducer(initialState, {
+  [getType(add)]: (
+    state: TodosState,
+    action: ReturnType<typeof add>
+  ): TodosState => ({
     ...state,
     todos: [...state.todos, action.payload],
   }),
-  [getType(clearTodos)]: state => ({ ...state, todos: [] }),
+  [getType(clearTodos)]: (state: TodosState): TodosState => ({
+    ...state,
+    todos: [],
+  }),
 });
 ```
 
 Regular `switch` reducers use `getType` so the union still narrows:
 
 ```ts
+// features/todos/reducer-switch.ts
 import { ActionType, getType } from 'typesafe-actions';
 
 import { initialState, TodosState } from './types';
@@ -434,20 +486,30 @@ export const todosReducer = (
 
 #### Action helpers
 
-`isActionOf` is a type guard. Use it with `filter`, `if`, or any predicate API. It is curried and accepts a single creator or an array (type-safe up to 5).
+`isActionOf` is a type guard. Use it with `filter`, `if`, or any predicate API. It is curried and accepts one creator or an array of creators.
 
 ```ts
-import { isActionOf } from 'typesafe-actions';
+// features/todos/guards.ts
+import { ActionType, isActionOf } from 'typesafe-actions';
 import { add, toggle } from './actions';
+import * as actions from './actions';
 
-if (isActionOf(add, action)) {
-  // action: { type: "todos/ADD"; payload: Todo }
+type TodosAction = ActionType<typeof actions>;
+
+export function readAddedTodo(action: TodosAction) {
+  if (isActionOf(add, action)) {
+    // action: { type: "todos/ADD"; payload: Todo }
+    return action.payload.completed;
+  }
+  return undefined;
 }
 
-[action1, action2].filter(isActionOf([add, toggle]));
-// narrowed to
-// | { type: "todos/ADD"; payload: Todo }
-// | { type: "todos/TOGGLE"; payload: string }
+export function editsOnly(actions: TodosAction[]) {
+  // narrowed to
+  // | { type: "todos/ADD"; payload: Todo }
+  // | { type: "todos/TOGGLE"; payload: string }
+  return actions.filter(isActionOf([add, toggle]));
+}
 ```
 
 #### Async flows
@@ -455,7 +517,7 @@ if (isActionOf(add, action)) {
 **redux-observable** — filter with `isActionOf`:
 
 ```ts
-// epics.ts
+// features/todos/epics.ts
 import { Epic } from 'redux-observable';
 import { from, of } from 'rxjs';
 import { catchError, filter, map, switchMap, takeUntil } from 'rxjs/operators';
@@ -473,7 +535,7 @@ export const fetchTodosEpic: Epic<
     filter(isActionOf(fetchTodosAsync.request)),
     switchMap(action =>
       from(todosApi.getAll(action.payload)).pipe(
-        map(fetchTodosAsync.success),
+        map(todos => fetchTodosAsync.success(todos)),
         catchError((err: Error) => of(fetchTodosAsync.failure(err))),
         takeUntil(action$.pipe(filter(isActionOf(fetchTodosAsync.cancel))))
       )
@@ -484,15 +546,21 @@ export const fetchTodosEpic: Epic<
 **redux-saga** — pass the action creator to `takeEvery` (it implements `toString()`). TypeScript still cannot infer `yield`, so assert the response type:
 
 ```ts
+// features/todos/saga.ts
 import { call, put, takeEvery } from 'redux-saga/effects';
 import { fetchTodosAsync } from './actions';
+import services from '../../store/services';
 import { Todo } from './types';
 
-function* fetchTodosSaga(
+export function* fetchTodosSaga(
   action: ReturnType<typeof fetchTodosAsync.request>
 ): Generator {
   try {
-    const response: Todo[] = yield call(todosApi.getAll, action.payload);
+    // `yield` is `unknown` under strict generator types, so assert the result.
+    const response = (yield call(
+      services.todosApi.getAll,
+      action.payload
+    )) as Todo[];
     yield put(fetchTodosAsync.success(response));
   } catch (err) {
     yield put(fetchTodosAsync.failure(err));
@@ -515,7 +583,7 @@ On this path **exported string constants** are the source of truth. Use `handleT
 String constants must stay **string literal types**. Concatenation, template strings, and plain object maps widen to `string` and break narrowing in reducers.
 
 ```ts
-// constants.ts
+// features/todos/constants.ts
 
 // Correct — each constant is a string literal type
 export const ADD = 'todos/ADD'; // => 'todos/ADD'
@@ -534,12 +602,13 @@ export const TodosActionTypes = {
 ```
 
 ```ts
-// Incorrect — type widens to string and breaks reducer narrowing
+// features/todos/constants-widening.ts
+// These forms type-check, but the type widens to `string` and reducer arms stop narrowing.
 const prefix = 'todos/';
-export const ADD = prefix + 'ADD'; // => string
-export const ADD = `${prefix}ADD`; // => string
+export const ADD_FROM_CONCAT = prefix + 'ADD'; // string
+export const ADD_FROM_TEMPLATE = `${prefix}ADD`; // string
 export default {
-  ADD: 'todos/ADD', // => string  (add `as const` to fix)
+  ADD: 'todos/ADD', // string — add `as const` on the object to keep the literal
 };
 ```
 
@@ -548,10 +617,10 @@ export default {
 Pass the constants into the same v5 `createAction` API:
 
 ```ts
-// actions.ts
+// features/todos/actions.ts
 import { createAction } from 'typesafe-actions';
 
-import { Todo } from './types';
+import { nextId, Todo } from './types';
 import { ADD, TOGGLE, CLEAR } from './constants';
 
 export const clearTodos = createAction(CLEAR)();
@@ -562,7 +631,7 @@ export const toggle = createAction(TOGGLE)<string>();
 
 export const add = createAction(
   ADD,
-  (title: string) => ({ id: cuid(), title, completed: false })
+  (title: string) => ({ id: nextId(), title, completed: false })
 )<Todo>();
 // add: (title: string) => { type: "todos/ADD"; payload: Todo }
 ```
@@ -570,8 +639,8 @@ export const add = createAction(
 #### Async actions
 
 ```ts
+// features/todos/actions.ts (continued)
 import { createAsyncAction } from 'typesafe-actions';
-import { Todo } from './types';
 import { FETCH_REQUEST, FETCH_SUCCESS, FETCH_FAILURE, FETCH_CANCEL } from './constants';
 
 export const fetchTodosAsync = createAsyncAction(
@@ -587,13 +656,41 @@ fetchTodosAsync.request('all');
 
 #### RootAction
 
-Still derive the union from the action-creator map with `ActionType` — constants do not replace that helper. The `Types.RootAction` augmentation from Path A is unchanged and still recommended so `createReducer` stays type-free.
+Still derive the union from the action-creator map with `ActionType`. Constants do not replace that helper. Augment `Types.RootAction` the same way as Path A so `createReducer` stays type-free. `Services` is the shared `store/services.ts` module.
 
 ```ts
+// features/todos/action-types.ts
 import { ActionType } from 'typesafe-actions';
 import * as todos from './actions';
 
 export type TodosAction = ActionType<typeof todos>;
+```
+
+```ts
+// store/root-reducer.ts
+import { combineReducers } from 'redux';
+import { todosReducer } from '../features/todos/reducer';
+
+const rootReducer = combineReducers({
+  todos: todosReducer,
+});
+
+export default rootReducer;
+```
+
+```ts
+// store/types.d.ts
+import { ActionType, StateType } from 'typesafe-actions';
+
+declare module 'typesafe-actions' {
+  export type RootAction = ActionType<typeof import('../features/todos/actions')>;
+  export type RootState = StateType<typeof import('./root-reducer').default>;
+  export type Services = typeof import('./services').default;
+
+  interface Types {
+    RootAction: RootAction;
+  }
+}
 ```
 
 #### Reducers
@@ -601,7 +698,7 @@ export type TodosAction = ActionType<typeof todos>;
 Use `handleType` when constants are the source of truth:
 
 ```ts
-// reducer.ts
+// features/todos/reducer.ts
 import { createReducer } from 'typesafe-actions';
 
 import { initialState } from './types';
@@ -646,10 +743,15 @@ export const todosReducer = createReducer(initialState)
   }));
 ```
 
-Object-map style uses the constants as keys:
+Object-map style uses the constants as keys. A string-literal key is contextually typed, unlike a computed `getType(...)` key:
 
 ```ts
-const todosReducer = createReducer(initialState, {
+// features/todos/reducer-map.ts
+import { createReducer } from 'typesafe-actions';
+import { initialState } from './types';
+import { ADD, CLEAR } from './constants';
+
+export const todosReducer = createReducer(initialState, {
   [ADD]: (state, action) => ({
     ...state,
     todos: [...state.todos, action.payload],
@@ -661,6 +763,7 @@ const todosReducer = createReducer(initialState, {
 Regular `switch` reducers compare against the constants directly:
 
 ```ts
+// features/todos/reducer-switch.ts
 import { ActionType } from 'typesafe-actions';
 
 import { initialState, TodosState } from './types';
@@ -698,17 +801,27 @@ export const todosReducer = (
 `isOfType` is the constant counterpart of `isActionOf`. Same currying and array support:
 
 ```ts
-import { isOfType } from 'typesafe-actions';
+// features/todos/guards.ts
+import { ActionType, isOfType } from 'typesafe-actions';
 import { ADD, TOGGLE } from './constants';
+import * as actions from './actions';
 
-if (isOfType(ADD, action)) {
-  // action: { type: "todos/ADD"; payload: Todo }
+type TodosAction = ActionType<typeof actions>;
+
+export function readAddedTodo(action: TodosAction) {
+  if (isOfType(ADD, action)) {
+    // action: { type: "todos/ADD"; payload: Todo }
+    return action.payload.completed;
+  }
+  return undefined;
 }
 
-[action1, action2].filter(isOfType([ADD, TOGGLE]));
-// narrowed to
-// | { type: "todos/ADD"; payload: Todo }
-// | { type: "todos/TOGGLE"; payload: string }
+export function editsOnly(actions: TodosAction[]) {
+  // narrowed to
+  // | { type: "todos/ADD"; payload: Todo }
+  // | { type: "todos/TOGGLE"; payload: string }
+  return actions.filter(isOfType([ADD, TOGGLE]));
+}
 ```
 
 #### Async flows
@@ -716,7 +829,7 @@ if (isOfType(ADD, action)) {
 **redux-observable** — filter with `isOfType`:
 
 ```ts
-// epics.ts
+// features/todos/epics.ts
 import { Epic } from 'redux-observable';
 import { from, of } from 'rxjs';
 import { catchError, filter, map, switchMap, takeUntil } from 'rxjs/operators';
@@ -735,7 +848,7 @@ export const fetchTodosEpic: Epic<
     filter(isOfType(FETCH_REQUEST)),
     switchMap(action =>
       from(todosApi.getAll(action.payload)).pipe(
-        map(fetchTodosAsync.success),
+        map(todos => fetchTodosAsync.success(todos)),
         catchError((err: Error) => of(fetchTodosAsync.failure(err))),
         takeUntil(action$.pipe(filter(isOfType(FETCH_CANCEL))))
       )
@@ -746,16 +859,21 @@ export const fetchTodosEpic: Epic<
 **redux-saga** — pass the type constant to `takeEvery`:
 
 ```ts
+// features/todos/saga.ts
 import { call, put, takeEvery } from 'redux-saga/effects';
 import { fetchTodosAsync } from './actions';
 import { FETCH_REQUEST } from './constants';
+import services from '../../store/services';
 import { Todo } from './types';
 
-function* fetchTodosSaga(
+export function* fetchTodosSaga(
   action: ReturnType<typeof fetchTodosAsync.request>
 ): Generator {
   try {
-    const response: Todo[] = yield call(todosApi.getAll, action.payload);
+    const response = (yield call(
+      services.todosApi.getAll,
+      action.payload
+    )) as Todo[];
     yield put(fetchTodosAsync.success(response));
   } catch (err) {
     yield put(fetchTodosAsync.failure(err));
@@ -777,25 +895,46 @@ You can mix the two styles in one app (for example while migrating), but keep a 
 - `handleType` / `isOfType` always take **type constants** (or string literals).
 - `ActionType<typeof actions>` works for both, because it reads the creators, not the constants file.
 
-```ts
-import { createReducer, isActionOf, isOfType } from 'typesafe-actions';
-import { add } from './actions';
-import { ADD, TOGGLE } from './constants';
+Calling `.handleAction(...)` returns a chain that only keeps `handleAction`. `.handleType(...)` only keeps `handleType`. The handler map is the place that accepts both key styles on one reducer:
 
-createReducer(initialState)
-  .handleAction(add, (state, action) => ({
+```ts
+// features/todos/mixed.ts
+import {
+  ActionType,
+  createReducer,
+  getType,
+  isActionOf,
+  isOfType,
+} from 'typesafe-actions';
+import { add } from './actions';
+import * as actions from './actions';
+import { ADD, TOGGLE } from './constants';
+import { initialState, TodosState } from './types';
+
+type TodosAction = ActionType<typeof actions>;
+
+export const mixedReducer = createReducer<TodosState, TodosAction>(initialState, {
+  [getType(add)]: (
+    state: TodosState,
+    handled: ReturnType<typeof add>
+  ): TodosState => ({
     ...state,
-    todos: [...state.todos, action.payload],
-  }))
-  .handleType(TOGGLE, (state, action) => ({
+    todos: [...state.todos, handled.payload],
+  }),
+  [TOGGLE]: (state, handled) => ({
     ...state,
     todos: state.todos.map(todo =>
-      todo.id === action.payload ? { ...todo, completed: !todo.completed } : todo
+      todo.id === handled.payload ? { ...todo, completed: !todo.completed } : todo
     ),
-  }));
+  }),
+});
 
-if (isActionOf(add, action) || isOfType(ADD, action)) {
-  // both narrow to { type: "todos/ADD"; payload: Todo }
+export function readAddedTodo(action: TodosAction) {
+  if (isActionOf(add, action) || isOfType(ADD, action)) {
+    // both narrow to { type: "todos/ADD"; payload: Todo }
+    return action.payload.completed;
+  }
+  return undefined;
 }
 ```
 
