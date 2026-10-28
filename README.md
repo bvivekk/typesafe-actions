@@ -48,7 +48,7 @@ _Found it useful? Want more updates?_
 
 ### **Features**
 - Easily create completely typesafe [Actions](#action-creators-api) or even [Async Actions](#createasyncaction)
-- Typesafe [`createAsyncEpic`](#createasyncepic) factory for `redux-observable` async-action flows
+- Typesafe [`createAsyncEpic`](#createasyncepic) factory for `redux-observable` async-action flows (import from `typesafe-actions/async-epic`)
 - No boilerplate and completely typesafe [Reducers](#reducer-creators-api)
 - Game-changing [Helper Types](#type-helpers-api) for Redux
 
@@ -59,7 +59,7 @@ _Found it useful? Want more updates?_
 
 ### **Goals**
 
-- **Secure and Minimal** - no required third-party dependencies (`rxjs` is an optional peer for `createAsyncEpic`), according to `size-snapshot` (Minified: 3.48 KB, Gzipped: 1.03 KB), check also on [bundlephobia](https://bundlephobia.com/result?p=typesafe-actions)
+- **Secure and Minimal** - no required third-party dependencies (the root entry never loads `rxjs`; optional peer `rxjs` is required only by `typesafe-actions/async-epic`), according to `size-snapshot` (Minified: 3.48 KB, Gzipped: 1.03 KB), check also on [bundlephobia](https://bundlephobia.com/result?p=typesafe-actions)
 - **Optimized** - distribution packages bundled in 3 different formats (`cjs`, `esm` and `umd`) with separate bundles for dev & prod (same as `react`)
 - **Quality** - complete test-suite for an entire API surface containing regular runtime tests and extra type-tests to guarantee **type soundness** and to prevent regressions in the future TypeScript versions
 - **Performance** - integrated performance benchmarks to guarantee that the computational complexity of types are in check and there are no slow-downs when your application grow `npm run benchmark:XXX`
@@ -134,6 +134,17 @@ npm install typesafe-actions
 
 # YARN
 yarn add typesafe-actions
+```
+
+`createAsyncEpic` is not part of the root entry. Install optional peer `rxjs` and import it from `typesafe-actions/async-epic`:
+
+```bash
+npm install rxjs
+```
+
+```ts
+import { createAsyncAction } from 'typesafe-actions';
+import { createAsyncEpic } from 'typesafe-actions/async-epic';
 ```
 
 [⇧ back to top](#table-of-contents)
@@ -456,7 +467,7 @@ The same request/success/failure/cancel flow can be expressed with `createAsyncE
 
 ```ts
 import { from } from 'rxjs';
-import { createAsyncEpic } from 'typesafe-actions';
+import { createAsyncEpic } from 'typesafe-actions/async-epic';
 import { fetchTodosAsync } from './actions';
 
 const fetchTodosFlow: Epic<RootAction, RootAction, RootState, Services> =
@@ -468,6 +479,8 @@ const fetchTodosFlow: Epic<RootAction, RootAction, RootState, Services> =
 You can also compose the lower-level operators yourself (the original `mapUntilCatch` use-case):
 
 ```ts
+import { handleAsyncAction } from 'typesafe-actions/async-epic';
+
 employeeService.getEmployees(payload).pipe(
   handleAsyncAction(action$, fetchEmployees)
 );
@@ -769,7 +782,7 @@ fn(fetchUsersAsync);
 
 #### `createAsyncEpic`
 
-_Create a `redux-observable` compatible epic from an async action object. Also exports `handleAsyncAction`, `catchErrorAndHandleWithAction`, and `takeUntilAction` for composing the same flow by hand._
+_Create a `redux-observable` compatible epic from an async action object. Also exports `handleAsyncAction`, `catchErrorAndHandleWithAction`, and `takeUntilAction` for composing the same flow by hand. These helpers are exported from `typesafe-actions/async-epic`, not the package root, so `require('typesafe-actions')` does not load RxJS._
 
 ```ts
 createAsyncEpic(asyncAction, handler, options?)
@@ -779,7 +792,7 @@ createAsyncEpic(asyncAction, handler, options?)
 
 - Handler may return any RxJS `ObservableInput` (Observable, Promise, iterable).
 - Default concurrency is `'switch'` (a later request cancels the previous in-flight request). Pass `concurrency: 'merge' | 'concat' | 'exhaust'` to change that.
-- `rxjs` is an optional peer dependency and is required when using this helper.
+- `rxjs` is an optional peer dependency. Install it only when importing this entry.
 
 Examples:
 [> Advanced Usage Examples](src/create-async-epic.spec.ts)
@@ -787,11 +800,11 @@ Examples:
 ```ts
 import { Epic } from 'redux-observable';
 import { from } from 'rxjs';
+import { createAsyncAction } from 'typesafe-actions';
 import {
-  createAsyncAction,
   createAsyncEpic,
   handleAsyncAction,
-} from 'typesafe-actions';
+} from 'typesafe-actions/async-epic';
 
 const fetchUserAsync = createAsyncAction(
   'FETCH_USER_REQUEST',
